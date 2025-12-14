@@ -68,6 +68,36 @@ Optional with defaults:
 
 See `.env.example` for full list.
 
+## Querying Cost Data
+
+```sql
+-- Total costs by service (last 30 days)
+SELECT service, SUM(cost) as total_cost, currency
+FROM cost_analytics.costs
+WHERE date >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY service, currency
+ORDER BY total_cost DESC;
+
+-- Daily spend trend
+SELECT date, SUM(cost) as daily_cost
+FROM cost_analytics.costs
+GROUP BY date
+ORDER BY date DESC;
+
+-- Costs by account
+SELECT account_id, SUM(cost) as total_cost
+FROM cost_analytics.costs
+GROUP BY account_id;
+
+-- Raw data has 100+ columns for detailed analysis
+SELECT * FROM cost_analytics.raw_cup LIMIT 10;
+```
+
+Access via:
+- **Supabase Studio**: https://supabase.cambridgedevedu.org
+- **Direct SQL**: Connect to postgres via SSH tunnel
+- **Grafana**: Connect as postgres datasource (TODO)
+
 ## Extending for New Cloud Providers
 
 1. Create `src/sources/gcp_billing.py` - implement `BaseSource` interface (extract generator, get_source_name)
@@ -86,3 +116,12 @@ See `.env.example` for full list.
   - Set in Coolify UI: Configuration → Advanced → Docker Network
   - Or manually: `docker network connect f8wkccg888sggk4gw000wk40 <container>`
 - **Coolify app UUID**: `bsgk044gko04cwsgg84sc0oc`
+- **Redeploy**: Coolify auto-deploys on git push, or manually trigger in UI
+- **Logs**: Coolify UI → Application → Logs, or `docker logs poet-cloud-cost-etl`
+
+## Lessons Learned
+
+- Coolify API requires Cloudflare Access bypass (service token) for external access
+- Test Docker builds locally before deploying (start Docker Desktop)
+- Container must join Supabase network manually if not set in Coolify UI
+- CLI uses typer subcommands - always specify `sync` in entrypoint
