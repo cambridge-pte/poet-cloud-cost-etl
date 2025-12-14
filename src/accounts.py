@@ -52,7 +52,15 @@ ACCOUNTS = {
 }
 
 def get_account_ids():
-    """Return list of all account IDs to filter."""
+    """Return list of account IDs to filter.
+
+    If TEST_ACCOUNTS env var is set, use only those (comma-separated).
+    Otherwise use all configured accounts.
+    """
+    import os
+    test_accounts = os.getenv("TEST_ACCOUNTS", "")
+    if test_accounts:
+        return [a.strip() for a in test_accounts.split(",") if a.strip()]
     return list(ACCOUNTS.keys())
 
 def get_account_name(account_id: str) -> str:
