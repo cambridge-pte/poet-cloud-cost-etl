@@ -78,7 +78,11 @@ See `.env.example` for full list.
 
 - **Behind Cloudflare** - All external traffic routes through Cloudflare
 - **PostgreSQL access**:
-  - Docker internal: `supabase-db:5432` (service name)
+  - Docker internal: `supabase-db-f8wkccg888sggk4gw000wk40:5432`
   - External: SSH tunnel to EC2 → `localhost:5432`
   - UI: https://supabase.cambridgedevedu.org
-- **Deployment**: Coolify on EC2, containers share Docker network with Supabase
+- **Deployment**: Coolify on EC2
+- **Docker network**: Must join `f8wkccg888sggk4gw000wk40` (Supabase network)
+  - Set in Coolify UI: Configuration → Advanced → Docker Network
+  - Or manually: `docker network connect f8wkccg888sggk4gw000wk40 <container>`
+- **Coolify app UUID**: `bsgk044gko04cwsgg84sc0oc`
