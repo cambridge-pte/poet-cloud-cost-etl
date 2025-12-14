@@ -3,31 +3,31 @@ services:
     build: .
     container_name: poet-cloud-cost-etl
     restart: unless-stopped
-    network_mode: "container:supabase-db-f8wkccg888sggk4gw000wk40"
+    networks:
+      - supabase-network
     environment:
-      # AWS Credentials
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION:-eu-west-2}
-
-      # S3 Configuration
       - S3_BUCKET=${S3_BUCKET:-cupa-cost-usage-combined}
       - CUR_PATHS=${CUR_PATHS:-cup/CUP-Cost-Usage-Report/CUP-Cost-Usage-Report/,180431284529/CA-Cost-Usage-Report/CA-Cost-Usage-Report/}
-
-      # PostgreSQL Connection (localhost because of network_mode)
-      - POSTGRES_HOST=localhost
+      - POSTGRES_HOST=${POSTGRES_HOST:-supabase-db-f8wkccg888sggk4gw000wk40}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-postgres}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_SCHEMA=${POSTGRES_SCHEMA:-cost_analytics}
-
-      # ETL Settings
       - SYNC_SCHEDULE=${SYNC_SCHEDULE:-0 2 * * *}
+      - SYNC_MONTHS=${SYNC_MONTHS:-1}
       - RUN_ON_START=${RUN_ON_START:-true}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - etl-logs:/var/log/etl
+
+networks:
+  supabase-network:
+    external: true
+    name: f8wkccg888sggk4gw000wk40
 
 volumes:
   etl-logs:
