@@ -125,3 +125,15 @@ Access via:
 - Test Docker builds locally before deploying (start Docker Desktop)
 - Container must join Supabase network manually if not set in Coolify UI
 - CLI uses typer subcommands - always specify `sync` in entrypoint
+- **DuckDB loads entire query result into memory** - even with filters, large datasets crash small servers
+- Current EC2 (16GB) cannot handle full CUR dataset - need streaming/chunked approach
+
+## TODO: Before Next Deployment
+
+1. **Fix memory issue**: Refactor `extract_filtered()` to stream results instead of `fetchdf()` all at once
+2. **Test locally first**: Start Docker Desktop, build image, run with SSH tunnel to postgres
+3. **Start small**: Test with 1 account, 1 month before scaling up
+4. **Consider alternatives**:
+   - Process on larger instance (t4g.2xlarge = 32GB)
+   - Use Athena to query S3 directly, only ETL aggregated summaries
+   - Pre-aggregate in DuckDB before loading to postgres
