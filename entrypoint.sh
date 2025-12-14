@@ -5,7 +5,7 @@ set -e
 printenv | grep -v "no_proxy" >> /etc/environment
 
 # Create cron job from SYNC_SCHEDULE
-echo "${SYNC_SCHEDULE:-0 2 * * *} root cd /app && /usr/local/bin/python src/main.py >> /var/log/etl/sync.log 2>&1" > /etc/cron.d/etl-sync
+echo "${SYNC_SCHEDULE:-0 2 * * *} root cd /app && /usr/local/bin/python src/main.py sync >> /var/log/etl/sync.log 2>&1" > /etc/cron.d/etl-sync
 chmod 0644 /etc/cron.d/etl-sync
 crontab /etc/cron.d/etl-sync
 
@@ -15,7 +15,7 @@ echo "Sync schedule: ${SYNC_SCHEDULE:-0 2 * * *}"
 # Run initial sync if RUN_ON_START is set
 if [ "${RUN_ON_START:-true}" = "true" ]; then
     echo "$(date) - Running initial sync..."
-    python src/main.py
+    python src/main.py sync
 fi
 
 # Start cron in foreground
