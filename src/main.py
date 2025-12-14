@@ -4,6 +4,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -16,6 +17,7 @@ from config import Config
 from sources import AWSCURSource
 from loaders import PostgreSQLLoader
 from transforms import normalize_aws_cur, create_normalized_view_sql
+from accounts import get_account_ids, ACCOUNTS
 
 # Setup logging
 console = Console()
@@ -34,22 +36,31 @@ def setup_logging(level: str = "INFO"):
 
 @app.command()
 def sync(
+    months: int = typer.Option(1, "--months", "-m", help="Number of months to sync (default: 1)"),
     raw_only: bool = typer.Option(False, "--raw-only", help="Only load raw data, skip normalization"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be done without loading"),
+    all_accounts: bool = typer.Option(False, "--all-accounts", help="Sync all accounts (ignore filter)"),
 ):
-    """Run the ETL sync process."""
+    """Run the ETL sync process with account and date filtering."""
     try:
-        # Load configuration
         config = Config.from_env()
         setup_logging(config.log_level)
         logger = logging.getLogger(__name__)
 
+        # Determine account filter
+        account_ids = None if all_accounts else get_account_ids()
+        account_count = "all" if all_accounts else len(account_ids)
+
         logger.info("Starting POET Cloud Cost ETL sync")
-        logger.info(f"Target database: {config.postgres.host}:{config.postgres.port}/{config.postgres.database}")
-        logger.info(f"Target schema: {config.postgres.schema}")
+        logger.info(f"Months to sync: {months}")
+        logger.info(f"Accounts to filter: {account_count}")
+        logger.info(f"Target: {config.postgres.host}:{config.postgres.port}/{config.postgres.database}")
+        logger.info(f"Schema: {config.postgres.schema}")
 
         if dry_run:
             logger.info("DRY RUN - No data will be loaded")
+            if account_ids:
+                logger.info(f"Account IDs: {account_ids[:5]}... ({len(account_ids)} total)")
 
         # Initialize loader (skip for dry-run)
         loader = None
@@ -57,28 +68,33 @@ def sync(
             loader = PostgreSQLLoader(config.postgres)
             loader.ensure_schema()
 
-        # Track processed tables for view creation
         processed_tables = []
         sync_timestamp = datetime.utcnow()
         total_rows = 0
 
-        # Process each CUR path
         for path in config.aws.cur_paths:
-            # Derive table name from path
             table_name = _path_to_table_name(path)
             logger.info(f"Processing: {path} -> {table_name}")
 
-            # Initialize source
-            source = AWSCURSource(config.aws, path, table_name)
+            # Initialize source with filters
+            source = AWSCURSource(
+                config.aws,
+                path,
+                table_name,
+                account_ids=account_ids,
+                months_back=months,
+            )
 
             try:
                 if dry_run:
-                    logger.info(f"Would extract from: {source.get_s3_uri()}")
+                    partitions = source.get_month_partitions()
+                    logger.info(f"Would extract from partitions: {partitions}")
+                    logger.info(f"Filter: {source._build_where_clause()}")
                     continue
 
-                # Extract all data (for simplicity - could use chunked for large datasets)
-                logger.info(f"Extracting data from S3...")
-                df = source.extract_all()
+                # Use filtered extraction
+                logger.info("Extracting filtered data from S3...")
+                df = source.extract_filtered()
 
                 if df.empty:
                     logger.warning(f"No data extracted from {path}")
@@ -92,7 +108,7 @@ def sync(
                 total_rows += rows
                 logger.info(f"Loaded {rows} rows to {raw_table}")
 
-                # Normalize and load (unless raw_only)
+                # Normalize and load
                 if not raw_only:
                     logger.info("Normalizing data...")
                     normalized_df = normalize_aws_cur(df, table_name, sync_timestamp)
@@ -115,7 +131,6 @@ def sync(
             conn.commit()
             logger.info("Created costs view successfully")
 
-        # Cleanup
         if loader:
             loader.close()
 
@@ -128,6 +143,18 @@ def sync(
         console.print(f"\n[bold red]Error: {e}[/bold red]")
         logging.exception("Sync failed")
         sys.exit(1)
+
+
+@app.command()
+def list_accounts():
+    """List configured account IDs and names."""
+    console.print("\n[bold]Configured Accounts:[/bold]\n")
+    for account_id, config in ACCOUNTS.items():
+        name = config.get("name", "unknown")
+        region = config.get("region_filter", "")
+        region_str = f" [dim](region: {region})[/dim]" if region else ""
+        console.print(f"  {account_id}  {name}{region_str}")
+    console.print(f"\n[dim]Total: {len(ACCOUNTS)} accounts[/dim]")
 
 
 @app.command()
@@ -170,7 +197,6 @@ def test_s3():
             console.print(f"\n[bold]Path: {path}[/bold]")
             console.print(f"S3 URI: {source.get_s3_uri()}")
 
-            # Count files
             conn = source._get_connection()
             count = conn.execute(f"""
                 SELECT COUNT(*) FROM glob('{source.get_s3_uri()}')
@@ -186,20 +212,15 @@ def test_s3():
 
 def _path_to_table_name(path: str) -> str:
     """Convert S3 path to a valid PostgreSQL table name."""
-    # Extract meaningful part of path
     parts = [p for p in path.split("/") if p]
 
     if not parts:
         return "unknown"
 
-    # Use first part (account ID or report name)
     name = parts[0]
-
-    # Clean for PostgreSQL
     name = name.lower()
     name = name.replace("-", "_")
 
-    # If it's just a number (account ID), prefix it
     if name.isdigit():
         name = f"account_{name}"
 

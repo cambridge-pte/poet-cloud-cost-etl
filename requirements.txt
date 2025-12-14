@@ -2,5 +2,6 @@ duckdb>=0.9.0
 psycopg2-binary>=2.9.9
 pandas>=2.0.0
 python-dotenv>=1.0.0
+python-dateutil>=2.8.0
 typer>=0.9.0
 rich>=13.0.0
